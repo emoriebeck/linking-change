@@ -1,0 +1,1174 @@
+---
+title: "Untitled"
+output: html_document
+date: '2022-06-30'
+editor_options: 
+  chunk_output_type: console
+---
+
+# Workspace  
+## Packages  
+```{r packages}
+library(psych)
+library(knitr)
+library(kableExtra)
+library(lubridate)
+library(cowplot)
+library(plyr)
+library(tidyverse)
+library(brms)
+```
+
+## Directory  
+```{r}
+wd <- "/Volumes/Emorie/projects/linking-change"
+```
+
+## Codebook  
+```{r}
+esm_codebook <- sprintf("%s/02-codebooks/Codebook.csv", wd) %>% 
+  read_csv() %>% 
+  filter(type == "ESM") 
+
+trait_codebook <- sprintf("%s/02-codebooks/Codebook.csv", wd) %>% 
+  read_csv() %>% 
+  filter(type != "ESM") 
+```
+
+# Data  
+## ESM Data  
+```{r ESM data, results='hide'}
+subs <- sprintf("%s/01-data/01-raw-data/01-esm/subs.csv", wd) %>% read_csv()
+
+wave1_all <- sprintf("%s/01-data/01-raw-data/01-esm/esm_w1_RENAMED.csv",     wd) %>% 
+  read_csv() %>%
+  select(one_of(paste(esm_codebook$old_name, "w1", sep = "."))) %>%
+  mutate(esm.IDnum.w1 = as.character(mapvalues(esm.IDnum.w1, subs$old, subs$new, warn_missing = F)))
+wave4_all <- sprintf("%s/01-data/01-raw-data/01-esm/esm_w4_RENAMED_all.csv", wd) %>% 
+  read_csv() %>%
+  select(one_of(paste(esm_codebook$old_name, "w4", sep = "."))) %>%
+  mutate(esm.IDnum.w4 = as.character(mapvalues(esm.IDnum.w4, subs$old, subs$new, warn_missing = F))) 
+wave7_all <- sprintf("%s/01-data/01-raw-data/01-esm/esm_w7_RENAMED_all.csv", wd) %>% 
+  read_csv() %>%
+  select(one_of(paste(esm_codebook$old_name, "w7", sep = "."))) %>%
+  mutate(esm.IDnum.w7 = as.character(mapvalues(esm.IDnum.w7, subs$old, subs$new, warn_missing = F))) 
+
+old.names <- esm_codebook$old_name
+new.names <- esm_codebook$new_name
+
+#Getting necessary columns
+#Keeping subject ID and all esm.BFI items
+w1 <- wave1_all %>%
+  select(one_of(paste(old.names, "w1", sep = "."))) %>%
+  setNames(new.names) %>% # change column names
+  mutate(wave = "S1") 
+w4 <- wave4_all %>%
+  select(one_of(paste(old.names, "w4", sep = "."))) %>%
+  setNames(new.names) %>% # change column names
+  mutate(wave = "S4")
+w7 <- wave7_all %>%
+  select(one_of(paste(old.names, "w7", sep = "."))) %>%
+  setNames(new.names) %>% # change column names
+  mutate(wave = "S7")
+
+w1 <- w1 %>%
+  group_by(SID) %>%
+  arrange(day, hourBlock) %>%
+  mutate(beep_seq = seq(1, n(), 1)) %>%
+  ungroup()
+```
+
+### MI  
+```{r}
+w1_mi <- data.frame(unclass(w1 %>% select(-freq, -hourBlock, -day, -beep_seq, -wave)))
+set.seed(5)
+w1 <- amelia(w1_mi, m = 1, ts = "beepvar", cs = "SID")$imputations[[1]] %>%
+  as_tibble() %>%
+  full_join(w1 %>% select(SID, beepvar, wave)); w1_mi
+
+w4_mi <- data.frame(unclass(w4 %>% select(-freq, -hourBlock, -day, -wave)))
+set.seed(12)
+w4 <- amelia(w4_mi, m = 1, ts = "beepvar", cs = "SID")$imputations[[1]] %>%
+  as_tibble() %>%
+  full_join(w4 %>% select(SID, beepvar, wave)); w4_mi
+
+w7_mi <- data.frame(unclass(w7 %>% select(-freq, -hourBlock, -day, -wave)))
+set.seed(176)
+w7 <- amelia(w7_mi, m = 1, ts = "beepvar", cs = "SID")$imputations[[1]] %>%
+  as_tibble() %>%
+  full_join(w7 %>% select(SID, beepvar, wave)); w7_mi
+```
+
+
+## Trait Data  
+Now we get the 7 waves of trait level data. In the data file, the items were given an adjective descriptor rather than one that matched the trait and item number in the original BFI. So I create a data frame that does that so I can get this information easily.  
+## Rename and Reshape  
+```{r trait data}
+# make vectors of the original names of the data and the new names I'll give them for ease of use
+old_cols <- c("talkative", "findfault", "thorough", "depressed", "original", "reserved", "helpful",
+          "careless", "relaxed", "curious", "energy", "quarrels", "reliable", "tense", "ingenious",
+          "enthusiasm", "forgiving", "disorganized", "worries", "imagination", "quiet", "trusting",
+          "lazy", "emotionallystable", "inventive", "assertive", "cold", "perseveres", "moody", 
+          "artistic", "shy", "considerate", "efficient", "calm", "routine", "outgoing", "rude",
+          "plans", "nervous", "reflect", "unartistic", "cooperate", "distracted", "sophisticated")
+
+new_cols <- c(paste(rep(c("E", "A", "C", "N", "O"), times = 8), 
+              rep(seq(1,8,1), each = 5), sep = "_"), 
+              "O_9", "A_9", "C_9", "O_10")
+
+cols <- tibble(old = old_cols, new = new_cols)
+
+# load data and rename items to match the original BFI
+trait_data <- sprintf("%s/01-data/01-raw-data/02-trait/sevenwaves_REDACTED.csv", wd) %>% 
+    read.csv() %>%
+    # mutate(id = as.character(mapvalues(id, subs$old2, subs$new))) %>%
+    pivot_longer(
+      names_to = "item"
+      , values_to = "value"
+      , cols = outgoing1:sophisticated_d
+      , values_drop_na = T
+    ) %>%
+    mutate(item = gsub("[_]", "", item)) %>%
+    separate(item, c("item", "wave"), -1) %>%
+    filter(!(item %in% c("connected", "likesothers"))) %>%
+    mutate(item = factor(mapvalues(item, from = old_cols, to = new_cols), levels = new_cols),
+           wave = mapvalues(wave, from = c("1", "a", "b", "2", "c", "d", "3"),
+                            to = paste("T", seq(1,7,1), sep = ""))) %>%
+    rename(SID = id) %>%
+    select(SID, wave, item, value)
+```
+
+### Reverse Code  
+```{r reverse code trait}
+(trait_data <- trait_data %>%
+    left_join(trait_codebook %>% select(item = new_name, rev_code)) %>%
+    mutate(value = ifelse(rev_code == 1, reverse.code(-1, value, mini = 1, maxi = 15), value)) %>%
+    select(-rev_code))
+```
+
+### Cronbach's Alpha  
+```{r alpha}
+alpha_fun <- function(df){
+  df <- df %>% select(-SID)
+  psych::alpha(df)$total$raw_alpha
+}
+
+# calculate scale reliabilities for trait data
+trait_alphas <- trait_data %>%
+  mutate(SID = as.character(SID)) %>%
+  separate(item, c("trait", "item"), sep = "_") %>%
+  group_by(wave, trait) %>%
+  nest() %>% 
+  ungroup() %>%
+  mutate(data = map(data, ~(.) %>% 
+                      pivot_wider(
+                        names_from = "item"
+                        , values_from = "value"
+                      ))
+         , alpha = map_dbl(data, alpha_fun)) %>%
+  select(-data) %>%
+  spread(key = trait, value = alpha) 
+
+trait_alphas %>%
+  kable(., "html", booktabs = T, digits = 2,
+        caption = "Cronbach's Alpha for Trait-Level Scales") 
+
+# target.esm.subs <- esm_subs %>% full_join(target_subs)
+```
+
+### Trait Composites  
+```{r trait composites}
+# estimate trait composites for each wave
+trait_comp <- trait_data %>%
+  separate(item, c("trait", "item"), sep = "_") %>%
+  group_by(SID, wave, trait) %>%
+  summarize(t_value = mean(value, na.rm = T)) %>%
+  group_by(SID, trait) %>%
+  mutate(wave = as.numeric(str_remove(wave, "T"))
+         , wave_c = wave - min(wave)) %>%
+  ungroup() 
+```
+
+
+```{r item-level profile correlations}
+trait_rs <- trait_data %>%
+  mutate(wave = as.numeric(str_remove(wave, "T"))) %>%
+  arrange(SID, item, wave) %>%
+  group_by(SID, item) %>%
+  filter(lead(wave) - wave == 1 | wave - lag(wave) == 1) %>%
+  mutate(value2 = lead(value)
+         , wave2 = paste(wave, lead(wave), sep = "_")) %>%
+  filter(lead(wave) - wave == 1) %>%
+  group_by(SID, wave2) %>%
+  summarize(r = cor(value, value2, use = "pairwise")) %>%
+  ungroup() %>%
+  mutate(wave = as.numeric(mapvalues(wave2, c("1_2", "2_3", "3_4", "4_5", "5_6", "6_7")
+                          , c(0, 1, 2, 3, 4, 5), warn_missing = F))) %>%
+  group_by(SID) %>%
+  mutate(wave_c = wave - min(wave)) %>%
+  ungroup()
+
+trait_rs %>% 
+  ggplot(aes(x = r)) + 
+    geom_histogram(aes(y = ..density..), fill = "lightgrey", color = "black") + 
+    geom_density() + 
+    facet_wrap(~wave2) + 
+    theme_classic()
+```
+
+
+
+# Networks  
+## dynEGA  
+```{r dynEGA}
+ega_fun <- function(d, wave, sid){
+  d <- data.frame(d)
+  # get numeric ID of the participant ID column
+  idcol <- which(colnames(d) == "SID2")
+  gcol  <- which(colnames(d) == "wave2")
+  
+  ega_ind <- dynEGA(
+    data = d 
+    , n.embed = 4 # embedding dimension
+    , tau = 1  # offset for embedding, similar to lag 1
+    , delta = 4 # time between obs
+    , level = "individual" # we want individual-level models 
+    , id = idcol # id column position
+    , group = gcol # group membership, in this case the wave
+    , use.derivatives = 1 # we want to use 1st order derivatives
+    , model = "glasso" 
+    , model.args = list(gamma = .1)
+    , algorithm = "louvain" # the clustering algorithm for structure
+    , corr = "pearson" # type of correlation
+    , ncores = 1 # number of cores
+  ); ega_ind
+  
+  save(ega_ind, file = sprintf("%s/05-results/01-eganet/01-models/%s-%s.RData", wd, wave, sid))
+  
+  return(ega_ind$dynEGA[[1]])
+}
+
+
+nested_ega <- w4 %>%
+  full_join(w7) %>%
+  arrange(SID, wave, beepvar) %>%
+  mutate(wave = "S4") %>%
+  full_join(
+    w1 %>%
+      arrange(SID, beepvar)
+    ) %>%
+  group_by(SID, wave) %>%
+  filter(n() >= 10) %>%
+  ungroup() %>%
+  select(-beepvar) %>%
+  mutate(wave2 = wave
+         , SID2 = as.character(SID)) %>%
+  group_by(SID, wave) %>%
+  nest() %>%
+  ungroup() %>%
+  mutate(net = pmap(list(data, wave, SID), possibly(ega_fun, NA_real_)))
+```
+
+### Entropy & Total Correlation    
+```{r entropy and tc}
+entropy_fun <- function(d, n){
+  d <- d %>% select(-SID2, -wave2)
+  wc <- n$wc
+  if(any(is.na(wc))){
+    missing <- which(is.na(wc))
+    wc <- wc[-missing]
+    d <- d[, -missing]
+  }
+  entropyFit(data = d, structure = wc)
+}
+
+nested_ega <- nested_ega %>%
+  filter(!is.na(net)) %>%
+  mutate(entropy = map2(data, net, possibly(entropy_fun, NA_real_)))
+```
+
+### Density  
+```{r net density}
+dens_fun <- function(n){
+  net <- n$network
+  net[upper.tri(net, diag = T)] <- NA
+  sum(net != 0, na.rm = T)/sum(!is.na(net))
+}
+
+nested_ega <- nested_ega %>%
+  filter(!is.na(net)) %>%
+  mutate(density = map_dbl(net, possibly(dens_fun, NA_real_)))
+```
+
+### Cross-Wave Consistency (1-2 only)  
+
+```{r net ip r}
+r_fun <- function(d1, d2){
+  c1 <- colnames(d1); c2 <- colnames(d2)
+  d1 <- d1[rownames(d1) %in% c2, colnames(d1) %in% c2]
+  d2 <- d2[rownames(d2) %in% c1, colnames(d2) %in% c1]
+  d1[upper.tri(d1, diag = T)] <- NA; d2[upper.tri(d2, diag = T)] <- NA
+  cor(c(d1), c(d2), use = "pairwise")
+}
+
+idio_ip_cors <- nested_ega %>%
+  mutate(net = map(net, ~(.)$network)) %>%
+  select(SID, wave, net) %>%
+  pivot_wider(names_from = "wave", values_from = "net") %>%
+  filter(map_lgl(S4, is.null) == F & map_lgl(S1, is.null) == F) %>%
+  mutate(r = map2_dbl(S1, S4, r_fun))
+```
+
+### NMI  
+```{r}
+nmi_fun <- function(net){
+  wc <- net$wc
+  wc <- wc[!is.na(wc)]
+  theoretical <- names(wc)
+  theoretical <- as.numeric(as.factor(laply(str_split(theoretical, pattern = "_"), function(x) x[1])))
+  names(theoretical) <- names(wc)
+  
+  # Match with theoretical
+  matched <- theoretical[match(names(wc), names(theoretical))]
+  
+  igraph::compare(wc, matched, method = "nmi")
+}
+
+nested_ega <- nested_ega %>%
+  mutate(nmi = map_dbl(net, possibly(nmi_fun, NA_real_)))
+```
+
+## Combine Metrics  
+```{r}
+idio_long <- nested_ega %>% 
+  select(-data, -net, -entropy) %>%
+  full_join(
+    nested_ega %>% 
+      select(-data, -net, -density, -nmi) %>%
+      filter(!is.na(entropy)) %>% 
+      unnest(entropy) %>%
+      select(SID, wave, totcor = Total.Correlation, entropy = Average.Entropy)
+  ) %>%
+  full_join(
+    idio_ip_cors %>%
+      select(-S4, -S1) %>%
+      mutate(wave = "S1")
+  ) %>%
+  arrange(SID, wave) %>%
+  pivot_longer(
+    names_to = "idio_index"
+    , values_to = "idio_value"
+    , values_drop_na = T
+    , cols = density:r
+  )
+
+rm(nested_ega)
+```
+
+# Trait Trajectories  
+## Merge the Data  
+```{r}
+d_nested <- trait_comp %>%
+  mutate(SID = as.character(SID)) %>%
+  full_join(
+    idio_long %>% 
+      rename(i_wave = wave)
+  )  %>% 
+  filter(!is.na(i_wave)) %>%
+  group_by(trait, i_wave, idio_index) %>%
+  nest() %>%
+  ungroup()
+```
+
+## Sample Model  
+```{r}
+d <- d_nested$data[[1]]
+m0 <- brm(
+    t_value ~ 1 + wave_c + idio_value + wave_c:idio_value + (1 + wave_c | SID)
+    , data = d
+    , prior = c(prior(normal(7, 3), class = Intercept),
+                                 prior(cauchy(0, .1), class = sd),
+                                 prior(normal(0, .1), class = b),
+                                 prior(exponential(1), class = sigma),
+                                 prior(lkj(1), class = cor))
+    , cores = 4
+    , chains = 4
+    , iter = 100
+    , warmup = 10
+  )
+save(m0, file = sprintf("%s/05-results/trait-sample-model.RData", wd))
+```
+
+## Run the Models  
+```{r}
+lin_model_fun <- function(d, trait, metric, wave){
+  m <- update(m0
+              , newdata = d
+              # , prior = c(prior(normal(.6, .1), class = Intercept)
+              #             , prior(cauchy(0, .1), class = sd)
+              #             , prior(normal(0, .1), class = b)
+              #             , prior(exponential(1), class = sigma)
+              #             , prior(lkj(1), class = cor))
+              , cores = 4
+              , chains = 4
+              , iter = 8000
+              , warmup = 3000
+  )
+  save(m, file = sprintf("%s/05-results/02-trait-models/01-models/%s-%s-%s.RData", wd, trait, metric, wave))
+  
+  fx <- tidy(m)
+  rx <- coef(m)$SID %>% array_tree(3) %>% 
+    tibble(term = names(.), data = .) %>%
+    filter(term %in% c("Intercept", "wave_c")) %>%
+    mutate(data = map(data, ~(.) %>% data.frame %>% 
+                        rownames_to_column("SID"))) %>% 
+    unnest(data) %>% 
+    select(term, SID, estimate = Estimate, conf.low = Q2.5, conf.high = Q97.5)
+  save(fx, rx, file = sprintf("%s/05-results/02-trait-models/02-summary/%s-%s-%s.RData", wd, trait, metric, wave))
+  
+  draws <- as_draws_df(m)
+  save(draws, file = sprintf("%s/05-results/02-trait-models/03-draws/%s-%s-%s.RData", wd, trait, metric, wave))
+  
+  idio_levs <- d %>% 
+    select(SID, idio_value) %>%
+    distinct() %>%
+    drop_na() %>%
+    summarize(m = mean(idio_value)
+              , low = m - sd(idio_value)
+              , high = m + sd(idio_value))
+  
+  frame <- crossing(
+    wave_c = 0:6
+    , idio_value = c(idio_levs$low, idio_levs$m, idio_levs$high)
+  ) %>%
+    mutate(idio_fac = factor(idio_value, c(idio_levs$low, idio_levs$m, idio_levs$high), c("-1 SD", "M", "+1 SD"))) 
+  fx_pred <- bind_cols(frame, fitted(m, newdata = frame, re_formula = NA))
+  
+  frame <- d %>% 
+    select(SID, wave_c, idio_value) %>%
+    distinct()
+  rx_pred <- bind_cols(frame, fitted(m, newdata = frame))
+  save(fx_pred, rx_pred, file = sprintf("%s/05-results/02-trait-models/04-pred/%s-%s-%s.RData", wd, trait, metric, wave))
+  
+  rm(list = ls())
+  gc()
+  return(T)
+}
+
+d_nested %>%
+  mutate(m = pmap(list(data, trait, idio_index, i_wave), lin_model_fun))
+```
+
+```{r}
+load("/Volumes/Emorie/projects/linking-change/05-results/02-trait-models/01-models/E-totcor-S4.RData")
+d <- m$data
+idio_levs <- d %>% 
+    select(SID, idio_value) %>%
+    distinct() %>%
+    drop_na() %>%
+    summarize(m = mean(idio_value)
+              , low = m - sd(idio_value)
+              , high = m + sd(idio_value))
+
+hyp_test <- hypothesis(m
+           , c("wave_c + 0.1290294*wave_c:idio_value = 0"
+               , "wave_c - 0.04705358*wave_c:idio_value = 0"
+               , "wave_c + 0.3051124*wave_c:idio_value = 0"))
+
+hyp_test$hypothesis 
+```
+
+
+## Compile the Results  
+### Tables  
+```{r}
+loadRData <- function(file, obj){
+    #loads an RData file, and returns it
+    path <- sprintf("%s/05-results/02-trait-models/02-summary/%s", wd, file)
+    load(path)
+    get(ls()[grepl(obj, ls())])
+}
+
+nested_fx <- tibble(file = sprintf("%s/05-results/02-trait-models/02-summary", wd) %>% list.files()) %>%
+  mutate(fx = map2(file, "fx", loadRData)) %>%
+  separate(file, c("trait", "idio_metric", "idio_wave"), sep = "-") %>%
+  mutate(idio_wave = str_remove_all(idio_wave, ".RData")) %>%
+  unnest(fx) %>%
+  filter(effect == "fixed") %>% 
+  mutate(sig = ifelse(sign(conf.low) == sign(conf.high), "sig", "ns"))
+  # group_by(idio_metric, idio_wave) %>%
+  # nest() %>%
+  # ungroup()
+
+  
+tab <- nested_fx %>%
+  filter(idio_metric == "totcor" & idio_wave == "S4" & trait == "E") %>%
+  mutate(sig = ifelse(sign(conf.low) == sign(conf.high), "sig", "ns")) %>%
+  mutate_at(vars(estimate, conf.low, conf.high), ~sprintf("%.2f", .)) %>%
+  mutate(CI = sprintf("[%s, %s]", conf.low, conf.high)) %>%
+  mutate_at(vars(estimate, CI), ~ifelse(sig == "sig", sprintf("<strong>%s</strong>", .), .)) %>%
+  select(term, estimate, CI) %>%
+  kable(.
+        , "html"
+        , escape = F
+        , col.names = c("Term", "Est.", "CI")
+        , align = c("l", "c", "c")) %>%
+  kable_classic(full_width = F)
+
+save_kable(tab, file = sprintf("%s/05-results/05-tables/tab-1.html", wd))
+```
+
+### Plots  
+#### Random Effects Distributions  
+```{r}
+loadRData <- function(file, obj){
+    #loads an RData file, and returns it
+    path <- sprintf("%s/05-results/02-trait-models/02-summary/%s", wd, file)
+    load(path)
+    get(ls()[grepl(obj, ls())])
+}
+
+nested_rx <- tibble(file = sprintf("%s/05-results/02-trait-models/02-summary", wd) %>% list.files()) %>%
+  mutate(rx = map2(file, "rx", loadRData)) %>%
+  separate(file, c("trait", "idio_metric", "idio_wave"), sep = "-") %>%
+  mutate(idio_wave = str_remove_all(idio_wave, ".RData")) %>%
+  unnest(rx) %>%
+  mutate(trait = factor(trait, c("E", "A", "C", "N", "O")
+          , c("Extraversion", "Agreeableness", "Conscientiousness", "Neuroticism", "Openness"))) %>%
+  group_by(idio_metric, idio_wave, term, trait) %>%
+  nest() %>%
+  ungroup()
+```
+
+```{r}
+rx_est_fun <- function(d, trait){
+  ord <- (d %>% arrange(desc(estimate)))$SID
+  d %>%
+    mutate(SID = factor(SID, levels = ord)
+           , sig = ifelse(sign(conf.low) == sign(conf.high), "sig", "ns")) %>%
+    ggplot(aes(x = SID, y = estimate)) + 
+      geom_errorbar(aes(ymin = conf.low, ymax = conf.high)
+                    , position = "dodge"
+                    , width = 0
+                    , size = .25) +
+      geom_point(size = .5) + 
+      labs(x = "SID"
+           , y = "Estimated Trait Level"
+           , title = trait) +
+      coord_flip() + 
+      theme_classic() + 
+      theme(legend.position = "bottom"
+            , plot.title = element_text(face = "bold", hjust = .5)
+            , axis.text.y = element_blank())
+}
+
+nested_rx_plots <- nested_rx %>%
+  mutate(p = map2(data, trait, rx_est_fun)) %>%
+  group_by(idio_metric, idio_wave, term) %>%
+  nest() %>% 
+  ungroup()
+
+comb_trait_plot_fun <- function(d){
+  d <- d %>% arrange(trait)
+  p1 <- d$p[[1]]; p2 <- d$p[[2]]; p3 <- d$p[[3]]; p4 <- d$p[[4]]; p5 <- d$p[[5]]
+  p1 <- p1 +  labs (y = " "); p2 <- p2 +  labs (y =" ")
+  p4 <- p4 +  labs (y = " "); p5 <- p5 +  labs (y = " ")
+  plot_grid(p1, p2, p3, p4, p5
+            , nrow = 1
+            , axis = "tb"
+            , align = "v")
+}
+
+nested_rx_plots <- nested_rx_plots
+```
+
+
+#### Trajectories  
+##### Fixed  
+```{r}
+loadRData <- function(file, obj){
+    #loads an RData file, and returns it
+    path <- sprintf("%s/05-results/02-trait-models/04-pred/%s", wd, file)
+    load(path)
+    get(ls()[grepl(obj, ls())])
+}
+
+nested_pred <- tibble(file = sprintf("%s/05-results/02-trait-models/04-pred", wd) %>% list.files()) %>%
+  mutate(pred_fx = map2(file, "fx_pred", loadRData)) %>%
+  separate(file, c("trait", "idio_metric", "idio_wave"), sep = "-") %>%
+  mutate(idio_wave = str_remove_all(idio_wave, ".RData")) %>%
+  unnest(pred_fx) 
+```
+
+```{r}
+trait_traj_fun <- function(d, metric, wave){
+  p <- d %>%
+    mutate(trait = factor(trait, c("E", "A", "C", "N", "O")
+                          , c("Extraversion", "Agreeableness", "Conscientiousness", "Neuroticism", "Openness"))) %>%
+    ggplot(aes(x = wave_c + 1, y = Estimate, group = idio_fac)) + 
+      geom_ribbon(aes(ymin = `Q2.5`, ymax = `Q97.5`, fill = idio_fac), alpha = .1) + 
+      geom_line(aes(linetype = idio_fac, color = idio_fac)) + 
+      scale_x_continuous(
+        limits = c(1,7)
+        , breaks = seq(1, 7)
+      ) +
+      labs(
+        x = "Wave"
+        , y = "Estimated Trait Level"
+        , color = "Density"
+        , fill = "Density"
+        , linetype = "Density"
+        ) + 
+      facet_wrap(~trait) +
+      theme_classic() + 
+    theme(
+      strip.background = element_rect(fill = "black")
+      , strip.text = element_text(face = "bold", color = "white", size = rel(1.2))
+      , legend.text = element_text(face = "bold")
+      , legend.position = c(.85, .25)
+      , legend.title = element_text(face = "bold")
+      , axis.text = element_text(face = "bold")
+      , axis.title = element_text(face = "bold")
+    )
+  ggsave(p
+         , file = sprintf("%s/05-results/04-plots/01-trait/01-trajectories/%s-%s.png"
+                          , wd, metric, wave)
+         , width = 8
+         , height = 6)
+  ggsave(p
+         , file = sprintf("%s/05-results/04-plots/01-trait/01-trajectories/%s-%s.pdf"
+                          , wd, metric, wave)
+         , width = 8
+         , height = 6)
+  return(p)
+}
+
+nested_pred_gr_plots <- nested_pred %>%
+  group_by(idio_metric, idio_wave) %>%
+  nest() %>%
+  ungroup() %>%
+  mutate(p_traj = pmap(list(data, idio_metric, idio_wave), trait_traj_fun))
+```
+
+```{r}
+sing_trait_traj_fun <- function(d, trait, metric, wave){
+  lim <- c(floor(min(d$Estimate)-1.5), ceiling(max(d$Estimate) + 1.5))
+  p <- d %>%
+    ggplot(aes(x = wave_c + 1, y = Estimate, group = idio_fac)) + 
+      geom_ribbon(aes(ymin = `Q2.5`, ymax = `Q97.5`, fill = idio_fac), alpha = .25) + 
+      geom_line(aes(linetype = idio_fac), color = "black", size = .6) + 
+      scale_x_continuous(
+        limits = c(1,7)
+        , breaks = seq(1, 7)
+      ) +
+      scale_y_continuous(
+        limits = lim
+        , breaks = seq(lim[1], lim[2], 2)
+      ) +
+      labs(
+        x = "Wave"
+        , y = "Estimated Trait Level"
+        # , color = metric
+        , fill = metric
+        , linetype = metric
+        ) + 
+      theme_classic() + 
+    theme(
+      strip.background = element_rect(fill = "black")
+      , strip.text = element_text(face = "bold", color = "white", size = rel(1.2))
+      , legend.text = element_text(face = "bold")
+      , legend.position = "bottom"
+      , legend.title = element_text(face = "bold")
+      , axis.text = element_text(face = "bold")
+      , axis.title = element_text(face = "bold")
+      , panel.background = element_rect(color = "black", size = rel(3))
+    )
+  ggsave(p
+         , file = sprintf("%s/05-results/04-plots/01-trait/01-trajectories/single-traits/%s-%s-%s.png"
+                          , wd, trait, metric, wave)
+         , width = 7
+         , height = 4)
+  ggsave(p
+         , file = sprintf("%s/05-results/04-plots/01-trait/01-trajectories/single-traits/%s-%s-%s.pdf"
+                          , wd, trait, metric, wave)
+         , width = 7
+         , height = 4)
+  return(p)
+}
+
+
+nested_pred_plots <- nested_pred %>%
+    mutate(trait = factor(trait, c("E", "A", "C", "N", "O")
+                          , c("Extraversion", "Agreeableness", "Conscientiousness", "Neuroticism", "Openness"))) %>%
+  group_by(idio_metric, idio_wave, trait) %>%
+  nest() %>%
+  ungroup() %>%
+  mutate(p_traj = pmap(list(data, trait, idio_metric, idio_wave), sing_trait_traj_fun))
+```
+
+##### Random  
+```{r}
+loadRData <- function(file, obj){
+    #loads an RData file, and returns it
+    path <- sprintf("%s/05-results/02-trait-models/04-pred/%s", wd, file)
+    load(path)
+    get(ls()[grepl(obj, ls())])
+}
+
+nested_pred_rx <- tibble(file = sprintf("%s/05-results/02-trait-models/04-pred", wd) %>% list.files()) %>%
+  mutate(pred_rx = map2(file, "rx_pred", loadRData)) %>%
+  separate(file, c("trait", "idio_metric", "idio_wave"), sep = "-") %>%
+  mutate(idio_wave = str_remove_all(idio_wave, ".RData")) %>%
+  unnest(pred_rx) 
+```
+
+```{r}
+sing_trait_traj_rx_fun <- function(d, trait, metric, wave){
+  lim <- c(floor(min(d$Estimate)-1.5), ceiling(max(d$Estimate) + 1.5))
+  p <- d %>%
+    ggplot(aes(x = wave_c + 1, y = Estimate, color = idio_value)) + 
+      # geom_ribbon(aes(ymin = `Q2.5`, ymax = `Q97.5`, fill = idio_fac), alpha = .25) + 
+      geom_line(aes(group = SID), size = .2) + 
+      stat_smooth(method = "lm"
+                  , formula = y ~ x
+                  , size = .6
+                  , color = "black") +
+      scale_x_continuous(
+        limits = c(1,7)
+        , breaks = seq(1, 7)
+      ) +
+      scale_y_continuous(
+        limits = lim
+        , breaks = seq(lim[1], lim[2], 2)
+      ) +
+      scale_color_gradient(
+        low = "seagreen1"
+        , high = "seagreen4"
+      ) +
+      labs(
+        x = "Wave"
+        , y = "Estimated Trait Level"
+        # , color = metric
+        , color = metric
+        # , linetype = metric
+        ) + 
+      theme_classic() + 
+    theme(
+      strip.background = element_rect(fill = "black")
+      , strip.text = element_text(face = "bold", color = "white", size = rel(1.2))
+      , legend.text = element_text(face = "bold")
+      , legend.position = "bottom"
+      , legend.title = element_text(face = "bold")
+      , axis.text = element_text(face = "bold")
+      , axis.title = element_text(face = "bold")
+      , panel.background = element_rect(color = "black", size = rel(3))
+    )
+  ggsave(p
+         , file = sprintf("%s/05-results/04-plots/01-trait/02-px-trajectories/%s-%s-%s.png"
+                          , wd, trait, metric, wave)
+         , width = 7
+         , height = 4)
+  ggsave(p
+         , file = sprintf("%s/05-results/04-plots/01-trait/02-px-trajectories/%s-%s-%s.pdf"
+                          , wd, trait, metric, wave)
+         , width = 7
+         , height = 4)
+  return(p)
+}
+
+
+nested_pred_plots <- nested_pred_rx %>%
+    mutate(trait = factor(trait, c("E", "A", "C", "N", "O")
+                          , c("Extraversion", "Agreeableness", "Conscientiousness", "Neuroticism", "Openness"))) %>%
+  group_by(idio_metric, idio_wave, trait) %>%
+  nest() %>%
+  ungroup() %>%
+  mutate(p_traj = pmap(list(data, trait, idio_metric, idio_wave), sing_trait_traj_rx_fun))
+```
+
+
+
+# Consistency Trajectories  
+## Merge the Data  
+```{r}
+d_nested <- trait_rs %>%
+  mutate(SID = as.character(SID)) %>%
+  full_join(
+    idio_long %>% 
+      rename(i_wave = wave)
+  )  %>% 
+  filter(!is.na(i_wave)) %>%
+  group_by(i_wave, idio_index) %>%
+  nest() %>%
+  ungroup()
+```
+
+## Sample Model  
+```{r}
+d <- d_nested$data[[1]]
+f <- bf(r ~ 1 - (1 - intercept)*exp(-asymptote*wave_c),
+               nonlinear = intercept ~ 1 + idio_value + (1 | i | SID), 
+               asymptote ~ 1 + idio_value + (1  | i | SID),
+               nl = T)
+get_prior(f, data = d, family = gaussian())
+
+m0 <- brm(
+  formula = f
+  , data = d
+  , init = 0
+  , prior = c(prior(normal(.6, .1), class = b, coef = "Intercept", nlpar = "intercept"),
+                                 prior(cauchy(0, .1), class = sd, nlpar = "intercept"),
+                                 prior(normal(0, .1), class = b, nlpar = "intercept"),
+                                 prior(cauchy(0, .1), class = sd, nlpar = "asymptote"),
+                                 prior(normal(0, .1), class = b, nlpar = "asymptote"),
+                                 # prior(exponential(1), class = sigma),
+                                 prior(lkj(1), class = cor))
+  , family = gaussian()
+  , cores = 4
+  , chains = 4
+  , iter = 100
+  , warmup = 10
+  )
+
+
+save(m0, file = sprintf("%s/05-results/trait-sample-model.RData", wd))
+```
+
+## Run the Models  
+```{r}
+nonlin_model_fun <- function(d, metric, wave){
+  m <- update(m0
+              , newdata = d
+              # , prior = c(prior(normal(.6, .1), class = Intercept)
+              #             , prior(cauchy(0, .1), class = sd)
+              #             , prior(normal(0, .1), class = b)
+              #             , prior(exponential(1), class = sigma)
+              #             , prior(lkj(1), class = cor))
+              , cores = 4
+              , chains = 4
+              , iter = 8000
+              , warmup = 3000
+  )
+  save(m, file = sprintf("%s/05-results/03-r-models/01-models/%s-%s.RData", wd, metric, wave))
+  
+  fx <- tidy(m)
+  rx <- coef(m)$SID %>% array_tree(3) %>% 
+    tibble(term = names(.), data = .) %>%
+    filter(!grepl("idio_value", term)) %>%
+    mutate(data = map(data, ~(.) %>% data.frame %>% 
+                        rownames_to_column("SID"))) %>% 
+    unnest(data) %>% 
+    select(term, SID, estimate = Estimate, conf.low = Q2.5, conf.high = Q97.5)
+  save(fx, rx, file = sprintf("%s/05-results/03-r-models/02-summary/%s-%s.RData", wd, metric, wave))
+  
+  draws <- as_draws_df(m)
+  save(draws, file = sprintf("%s/05-results/03-r-models/03-draws/%s-%s.RData", wd, metric, wave))
+  
+  idio_levs <- d %>% 
+    select(SID, idio_value) %>%
+    distinct() %>%
+    drop_na() %>%
+    summarize(m = mean(idio_value)
+              , low = m - sd(idio_value)
+              , high = m + sd(idio_value))
+  
+  frame <- crossing(
+    wave_c = 0:6
+    , idio_value = c(idio_levs$low, idio_levs$m, idio_levs$high)
+  ) %>%
+    mutate(idio_fac = factor(idio_value, c(idio_levs$low, idio_levs$m, idio_levs$high), c("-1 SD", "M", "+1 SD"))) 
+  fx_pred <- bind_cols(frame, fitted(m, newdata = frame, re_formula = NA))
+  
+  frame <- m$data %>% 
+    select(SID, wave_c, idio_value) %>%
+    distinct()
+  rx_pred <- bind_cols(frame, fitted(m, newdata = frame))
+  save(fx_pred, rx_pred, file = sprintf("%s/05-results/03-r-models/04-pred/%s-%s.RData", wd, metric, wave))
+  
+  rm(list = ls())
+  gc()
+  return(T)
+}
+
+d_nested %>%
+  mutate(m = pmap(list(data, idio_index, i_wave), nonlin_model_fun))
+```
+
+## Compile the Results  
+### Tables  
+```{r}
+loadRData <- function(file, obj){
+    #loads an RData file, and returns it
+    path <- sprintf("%s/05-results/03-r-models/02-summary/%s", wd, file)
+    load(path)
+    get(ls()[grepl(obj, ls())])
+}
+
+nested_fx_r <- tibble(file = sprintf("%s/05-results/03-r-models/02-summary", wd) %>% list.files()) %>%
+  mutate(fx = map2(file, "fx", loadRData)) %>%
+  separate(file, c("idio_metric", "idio_wave"), sep = "-") %>%
+  mutate(idio_wave = str_remove_all(idio_wave, ".RData")) %>%
+  unnest(fx) %>%
+  filter(effect == "fixed") 
+  mutate(sig = ifelse(sign(conf.low) == sign(conf.high), "sig", "ns"))
+  group_by(idio_metric, idio_wave) %>%
+  nest() %>%
+  ungroup()
+  
+tab <- nested_fx_r %>%
+  filter(idio_metric == "density" & idio_wave == "S4") %>%
+  mutate(sig = ifelse(sign(conf.low) == sign(conf.high), "sig", "ns")) %>%
+  mutate_at(vars(estimate, conf.low, conf.high), ~sprintf("%.2f", .)) %>%
+  mutate(CI = sprintf("[%s, %s]", conf.low, conf.high)) %>%
+  mutate_at(vars(estimate, CI), ~ifelse(sig == "sig", sprintf("<strong>%s</strong>", .), .)) %>%
+  select(idio_metric, term, estimate, CI) %>%
+  kable(.
+        , "html"
+        , escape = F
+        , col.names = c("Metric", "Term", "Est.", "CI")
+        , align = c("c", "l", "c", "c")) %>%
+  kable_classic(full_width = F)
+
+save_kable(tab, file = sprintf("%s/05-results/05-tables/tab-2.html", wd))
+```
+
+
+```{r}
+load("/Volumes/Emorie/projects/linking-change/05-results/03-r-models/01-models/density-S4.RData")
+d <- m$data
+idio_levs <- d %>% 
+    select(SID, idio_value) %>%
+    distinct() %>%
+    drop_na() %>%
+    summarize(m = mean(idio_value)
+              , low = m - sd(idio_value)
+              , high = m + sd(idio_value))
+
+hyp_test <- hypothesis(m
+           , c("asymptote_Intercept + 0.3763668*asymptote_idio_value = 0"
+               , "asymptote_Intercept + 0.1349899*asymptote_idio_value = 0"
+               , "asymptote_Intercept + 0.6177438*asymptote_idio_value = 0"))
+
+hyp_test$hypothesis 
+```
+
+### Plots  
+#### Random Effects Distributions  
+```{r}
+loadRData <- function(file, obj){
+    #loads an RData file, and returns it
+    path <- sprintf("%s/05-results/02-trait-models/02-summary/%s", wd, file)
+    load(path)
+    get(ls()[grepl(obj, ls())])
+}
+
+nested_rx <- tibble(file = sprintf("%s/05-results/02-trait-models/02-summary", wd) %>% list.files()) %>%
+  mutate(rx = map2(file, "rx", loadRData)) %>%
+  separate(file, c("trait", "idio_metric", "idio_wave"), sep = "-") %>%
+  mutate(idio_wave = str_remove_all(idio_wave, ".RData")) %>%
+  unnest(rx) %>%
+  mutate(trait = factor(trait, c("E", "A", "C", "N", "O")
+          , c("Extraversion", "Agreeableness", "Conscientiousness", "Neuroticism", "Openness"))) %>%
+  group_by(idio_metric, idio_wave, term, trait) %>%
+  nest() %>%
+  ungroup()
+```
+
+```{r}
+rx_est_fun <- function(d, trait){
+  ord <- (d %>% arrange(desc(estimate)))$SID
+  d %>%
+    mutate(SID = factor(SID, levels = ord)
+           , sig = ifelse(sign(conf.low) == sign(conf.high), "sig", "ns")) %>%
+    ggplot(aes(x = SID, y = estimate)) + 
+      geom_errorbar(aes(ymin = conf.low, ymax = conf.high)
+                    , position = "dodge"
+                    , width = 0
+                    , size = .25) +
+      geom_point(size = .5) + 
+      labs(x = "SID"
+           , y = "Estimated Trait Level"
+           , title = trait) +
+      coord_flip() + 
+      theme_classic() + 
+      theme(legend.position = "bottom"
+            , plot.title = element_text(face = "bold", hjust = .5)
+            , axis.text.y = element_blank())
+}
+
+nested_rx_plots <- nested_rx %>%
+  mutate(p = map2(data, trait, rx_est_fun)) %>%
+  group_by(idio_metric, idio_wave, term) %>%
+  nest() %>% 
+  ungroup()
+
+comb_trait_plot_fun <- function(d){
+  d <- d %>% arrange(trait)
+  p1 <- d$p[[1]]; p2 <- d$p[[2]]; p3 <- d$p[[3]]; p4 <- d$p[[4]]; p5 <- d$p[[5]]
+  p1 <- p1 +  labs (y = " "); p2 <- p2 +  labs (y =" ")
+  p4 <- p4 +  labs (y = " "); p5 <- p5 +  labs (y = " ")
+  plot_grid(p1, p2, p3, p4, p5
+            , nrow = 1
+            , axis = "tb"
+            , align = "v")
+}
+
+nested_rx_plots <- nested_rx_plots
+```
+
+
+#### Trajectories  
+##### Fixed Effects  
+```{r}
+loadRData <- function(file, obj){
+    #loads an RData file, and returns it
+    path <- sprintf("%s/05-results/03-r-models/04-pred/%s", wd, file)
+    load(path)
+    get(ls()[grepl(obj, ls())])
+}
+
+nested_pred_r <- tibble(file = sprintf("%s/05-results/03-r-models/04-pred", wd) %>% list.files()) %>%
+  mutate(pred_fx = map2(file, "fx_pred", loadRData)) %>%
+  separate(file, c("idio_metric", "idio_wave"), sep = "-") %>%
+  mutate(idio_wave = str_remove_all(idio_wave, ".RData")) %>%
+  unnest(pred_fx) %>%
+  group_by(idio_metric, idio_wave) %>%
+  nest() %>%
+  ungroup()
+```
+
+```{r}
+ip_traj_fun <- function(d, metric, wave){
+  p <- d %>%
+    # mutate(trait = factor(trait, c("E", "A", "C", "N", "O")
+    #                       , c("Extraversion", "Agreeableness", "Conscientiousness", "Neuroticism", "Openness"))) %>%
+    ggplot(aes(x = wave_c + 1, y = Estimate, group = idio_fac)) + 
+      geom_ribbon(aes(ymin = `Q2.5`, ymax = `Q97.5`, fill = idio_fac), alpha = .25) + 
+      geom_line(aes(linetype = idio_fac), color = "black", size = .6) + 
+      scale_x_continuous(
+        limits = c(1,6)
+        , breaks = seq(1, 6)
+        , labels = c("1-2", "2-3", "3-4", "4-5", "5-6", "6-7")
+      ) +
+      scale_y_continuous(
+        limits = c(.5,1)
+        , breaks = seq(.5, 1, .1)
+      ) +
+      labs(
+        x = "Wave"
+        , y = "Estimated Ipsative Consistency"
+        , color = metric
+        , fill = metric
+        , linetype = metric
+        ) + 
+      # facet_wrap(~idio_metric) +
+      theme_classic() + 
+    theme(
+      strip.background = element_rect(fill = "black")
+      , strip.text = element_text(face = "bold", color = "white", size = rel(1.2))
+      , legend.text = element_text(face = "bold")
+      , legend.position = "bottom"
+      , legend.title = element_text(face = "bold")
+      , axis.text = element_text(face = "bold")
+      , axis.title = element_text(face = "bold")
+      , panel.background = element_rect(color = "black", size = rel(3))
+    )
+  ggsave(p
+         , file = sprintf("%s/05-results/04-plots/02-consistency/01-trajectories/%s-%s.png"
+                          , wd, metric, wave)
+         , width = 7
+         , height = 4)
+  ggsave(p
+         , file = sprintf("%s/05-results/04-plots/02-consistency/01-trajectories/%s-%s.pdf"
+                          , wd, metric, wave)
+         , width = 7
+         , height = 4)
+  return(p)
+}
+
+nested_pred_r <- nested_pred_r %>%
+  mutate(p_traj = pmap(list(data, idio_metric, idio_wave), ip_traj_fun))
+
+```
+
+##### Random Effects  
+
+```{r}
+loadRData <- function(file, obj){
+    #loads an RData file, and returns it
+    path <- sprintf("%s/05-results/03-r-models/04-pred/%s", wd, file)
+    load(path)
+    get(ls()[grepl(obj, ls())])
+}
+
+nested_pred_rx <- tibble(file = sprintf("%s/05-results/03-r-models/04-pred", wd) %>% list.files()) %>%
+  mutate(pred_rx = map2(file, "rx_pred", loadRData)) %>%
+  separate(file, c("idio_metric", "idio_wave"), sep = "-") %>%
+  mutate(idio_wave = str_remove_all(idio_wave, ".RData")) %>%
+  unnest(pred_rx) 
+```
+
+
+```{r}
+sing_trait_traj_rx_fun <- function(d, metric, wave){
+  # lim <- c(floor(min(d$Estimate)-1.5), ceiling(max(d$Estimate) + 1.5))
+  p <- d %>%
+    ggplot(aes(x = wave_c + 1, y = Estimate, color = idio_value)) + 
+      # geom_ribbon(aes(ymin = `Q2.5`, ymax = `Q97.5`, fill = idio_fac), alpha = .25) + 
+      geom_line(aes(group = SID), size = .2) + 
+      stat_smooth(method = "lm"
+                  , formula = y ~ x
+                  , size = .6
+                  , color = "black") +
+      scale_x_continuous(
+        limits = c(1,6)
+        , breaks = seq(1, 6)
+        , labels = c("1-2", "2-3", "3-4", "4-5", "5-6", "6-7")
+      ) +
+      scale_y_continuous(
+        limits = c(.4, 1)
+        , breaks = seq(.4, 1, .2)
+      ) +
+      scale_color_gradient(
+        low = "seagreen1"
+        , high = "seagreen4"
+      ) +
+      labs(
+        x = "Wave"
+        , y = "Estimated Trait Level"
+        # , color = metric
+        , color = metric
+        # , linetype = metric
+        ) + 
+      theme_classic() + 
+    theme(
+      strip.background = element_rect(fill = "black")
+      , strip.text = element_text(face = "bold", color = "white", size = rel(1.2))
+      , legend.text = element_text(face = "bold")
+      , legend.position = "bottom"
+      , legend.title = element_text(face = "bold")
+      , axis.text = element_text(face = "bold")
+      , axis.title = element_text(face = "bold")
+      , panel.background = element_rect(color = "black", size = rel(3))
+    )
+  ggsave(p
+         , file = sprintf("%s/05-results/04-plots/02-consistency/02-px-trajectories/%s-%s.png"
+                          , wd, metric, wave)
+         , width = 7
+         , height = 4)
+  ggsave(p
+         , file = sprintf("%s/05-results/04-plots/02-consistency/02-px-trajectories/%s-%s.pdf"
+                          , wd, metric, wave)
+         , width = 7
+         , height = 4)
+  return(p)
+}
+
+
+nested_pred_plots <- nested_pred_rx %>%
+  group_by(idio_metric, idio_wave) %>%
+  nest() %>%
+  ungroup() %>%
+  mutate(p_traj = pmap(list(data, idio_metric, idio_wave), sing_trait_traj_rx_fun))
+```
+

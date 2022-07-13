@@ -1,0 +1,76 @@
+﻿old_name,item_text,scale,new_name,rev_code,type,var
+esm.IDnum,identification number,numeric variable; ,SID,0,ESM,BFI
+esm.PRO01,frequency,numeric variable; ,freq,0,ESM,
+esm.PRO03,hour block survey that the responses correspond to,numeric variable; ,hourBlock,0,ESM,
+esm.PRO04,day of the study that the survey was completed,numeric variable; ,day,0,ESM,
+esm.PRO05,"""real_order?""",numeric variable; ,beepvar,0,ESM,
+esm.BFI37,"During the last hour, how rude were you?","Likert scale from 1 to 5; 1 = Not a lot, 3 = Somewhat, 5 = Very",A_rude,1,ESM,BFI
+esm.BFI21,"During the last hour, how quiet were you?","Likert scale from 1 to 5; 1 = Not a lot, 3 = Somewhat, 5 = Very",E_quiet,1,ESM,BFI
+esm.BFI23,"During the last hour, how lazy were you?","Likert scale from 1 to 5; 1 = Not a lot, 3 = Somewhat, 5 = Very",C_lazy,1,ESM,BFI
+esm.BFI09,"During the last hour, how relaxed were you?","Likert scale from 1 to 5; 1 = Not a lot, 3 = Somewhat, 5 = Very",N_relaxed,1,ESM,BFI
+esm.BFI04,"During the last hour, did you feel 'depressed, blue'?","Likert scale from 1 to 5; 1 = Not a lot, 3 = Somewhat, 5 = Very",N_depressed,0,ESM,BFI
+esm.BFI36,"During the last hour, how 'outgoing, sociable' were you?","Likert scale from 1 to 5; 1 = Not a lot, 3 = Somewhat, 5 = Very",E_outgoing,0,ESM,BFI
+esm.BFI32,"During the last hour, how 'considerate, kind' were you?","Likert scale from 1 to 5; 1 = Not a lot, 3 = Somewhat, 5 = Very",A_kind,0,ESM,BFI
+esm.BFI13,"During the last hour, how reliable were you?","Likert scale from 1 to 5; 1 = Not a lot, 3 = Somewhat, 5 = Very",C_reliable,0,ESM,BFI
+esm.BFI19,"During the last hour, how worried were you?","Likert scale from 1 to 5; 1 = Not a lot, 3 = Somewhat, 5 = Very",N_worried,0,ESM,BFI
+ts.IDnum.w1,ID number of target,,SID,0,Trait,
+ts.DEM01.w1,Your sex,1 = Male; 2 = Female,Dem_Sex,0,Trait,
+ts.DEM02.w1,Your age,numeric variable,Dem_Age,0,Trait,
+ts.DEM03.w1,Your sexual orientation,1 = Heterosexual; 2 = Homosexual; 3 = Bisexual; 4 = other (see t.DEM04.w1),Dem_SexOr,0,Trait,
+ts.DEM05.w1,Your year in school,1  = I am not a student; 2 = Freshman; 3 = Sophomore; 4 = Junior; 5 = Senior; 6 = 1st year graduate student; 7 = 2nd year graduate student; 8 = 3rd  year graduate student; 9 = 4th year graduate student; 10 = 5th year graduate student; 11 = 6th year graduate student; 12 = 7th year graduate student; 14 = Other,Dem_YrSchl,0,Trait,
+ts.DEM06.w1,Your ethnicity,1 = hispanic or latino; 2 = not hispanic or latino,Dem_Ethn,0,Trait,
+ts.DEM07.w1,Your race (choose all that apply),"0 = none; 1 = American Indian or Alaska Native; 2 = Asian or Asian-American; 3 = Black or African American; 4 = Native Hawaiian or Other Pacific Islander; 5 = White; 6= Other; 7= White AND Black or African American; 8 =Black or African American AND other, 9 = Black or African American AND Asian or Asian American; 10 = White AND Other, 11 = Black or African American AND ????; 12 = ; 13 = ; 14 = ; 15 = ; 16 = ",Dem_Race,0,Trait,
+ts.SQ01.w1,How satisfied are you with your: family,"Likert scale from 1 to 15; 1 = Completely dissatisfied, 15 = Completely satisfied",Sat_Family,0,Trait,
+ts.SQ02.w1,How satisfied are you with your: friendships,"Likert scale from 1 to 15; 1 = Completely dissatisfied, 15 = Completely satisfied",Sat_Friends,0,Trait,
+ts.SQ03.w1,How satisfied are you with your: romantic relationships,"Likert scale from 1 to 15; 1 = Completely dissatisfied, 15 = Completely satisfied",Sat_RomRel,0,Trait,
+ts.SQ04.w1,How satisfied are you with your: community,"Likert scale from 1 to 15; 1 = Completely dissatisfied, 15 = Completely satisfied",Sat_Comm,0,Trait,
+ts.SQ05.w1,How satisfied are you with your: academics/work,"Likert scale from 1 to 15; 1 = Completely dissatisfied, 15 = Completely satisfied",Sat_Academics,0,Trait,
+ts.SQ06.w1,How satisfied are you with your: finances,"Likert scale from 1 to 15; 1 = Completely dissatisfied, 15 = Completely satisfied",Sat_Finances,0,Trait,
+ts.SQ07.w1,How satisfied are you with your: physical health,"Likert scale from 1 to 15; 1 = Completely dissatisfied, 15 = Completely satisfied",Sat_PhysHlth,0,Trait,
+ts.SQ08.w1,How satisfied are you with your: psychological/mental health,"Likert scale from 1 to 15; 1 = Completely dissatisfied, 15 = Completely satisfied",Sat_PsychHlth,0,Trait,
+ts.SQ09.w1,How satisfied are you with your: hobbies,"Likert scale from 1 to 15; 1 = Completely dissatisfied, 15 = Completely satisfied",Sat_Hobbies,0,Trait,
+ts.SQ10.w1,How satisfied are you with your: life,"Likert scale from 1 to 15; 1 = Completely dissatisfied, 15 = Completely satisfied",Sat_Life,0,Trait,
+talkative,,,E_1,0,Trait,BFI
+find fault,,,A_1,1,Trait,BFI
+thorough,,,C_1,0,Trait,BFI
+depressed,,,N_1,0,Trait,BFI
+original,,,O_1,0,Trait,BFI
+reserved,,,E_2,1,Trait,BFI
+helpful,,,A_2,0,Trait,BFI
+careless,,,C_2,1,Trait,BFI
+relaxed,,,N_2,1,Trait,BFI
+curious,,,O_2,0,Trait,BFI
+energy,,,E_3,0,Trait,BFI
+quarrels,,,A_3,1,Trait,BFI
+reliable,,,C_3,0,Trait,BFI
+tense,,,N_3,0,Trait,BFI
+ingenious,,,O_3,0,Trait,BFI
+enthusiasm,,,E_4,0,Trait,BFI
+forgiving,,,A_4,0,Trait,BFI
+disorganized,,,C_4,1,Trait,BFI
+worries,,,N_4,0,Trait,BFI
+imagination,,,O_4,0,Trait,BFI
+quiet,,,E_5,1,Trait,BFI
+trusting,,,A_5,0,Trait,BFI
+lazy,,,C_5,1,Trait,BFI
+emotionally stable,,,N_5,1,Trait,BFI
+inventive,,,O_5,0,Trait,BFI
+assertive,,,E_6,0,Trait,BFI
+cold,,,A_6,1,Trait,BFI
+perseveres,,,C_6,0,Trait,BFI
+moody,,,N_6,0,Trait,BFI
+artistic,,,O_6,0,Trait,BFI
+shy,,,E_7,1,Trait,BFI
+considerate,,,A_7,0,Trait,BFI
+efficient,,,C_7,0,Trait,BFI
+calm,,,N_7,1,Trait,BFI
+routine,,,O_7,1,Trait,BFI
+outgoing,,,E_8,0,Trait,BFI
+rude,,,A_8,1,Trait,BFI
+plans,,,C_8,0,Trait,BFI
+nervous,,,N_8,0,Trait,BFI
+reflect,,,O_8,0,Trait,BFI
+unartistic,,,O_9,1,Trait,BFI
+cooperate,,,A_9,0,Trait,BFI
+distracted,,,C_9,1,Trait,BFI
+sophisticated,,,O_10,0,Trait,BFI
