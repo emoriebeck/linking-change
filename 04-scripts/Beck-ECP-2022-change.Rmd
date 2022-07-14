@@ -1,7 +1,16 @@
 ---
-title: "Untitled"
-output: html_document
-date: '2022-06-30'
+title: 'Using Idiographic Features to Inform Between-Person Personality Change'
+author: 'Emorie D Beck'
+output:
+  html_document:
+    theme: united
+    highlight: tango
+    df_print: paged
+    code_folding: show
+    toc: true
+    toc_float: true
+    number_sections: true
+date: '2022-07-14'
 editor_options: 
   chunk_output_type: console
 ---
@@ -13,6 +22,8 @@ library(psych)
 library(knitr)
 library(kableExtra)
 library(lubridate)
+library(Amelia)
+library(EGAnet)
 library(cowplot)
 library(plyr)
 library(tidyverse)
@@ -37,7 +48,7 @@ trait_codebook <- sprintf("%s/02-codebooks/Codebook.csv", wd) %>%
 
 # Data  
 ## ESM Data  
-```{r ESM data, results='hide'}
+```{r ESM data, results='hide', eval = F}
 subs <- sprintf("%s/01-data/01-raw-data/01-esm/subs.csv", wd) %>% read_csv()
 
 wave1_all <- sprintf("%s/01-data/01-raw-data/01-esm/esm_w1_RENAMED.csv",     wd) %>% 
@@ -52,7 +63,11 @@ wave7_all <- sprintf("%s/01-data/01-raw-data/01-esm/esm_w7_RENAMED_all.csv", wd)
   read_csv() %>%
   select(one_of(paste(esm_codebook$old_name, "w7", sep = "."))) %>%
   mutate(esm.IDnum.w7 = as.character(mapvalues(esm.IDnum.w7, subs$old, subs$new, warn_missing = F))) 
+save(wave1_all, wave4_all, wave7_all, file = sprintf("%s/01-data/02-clean-data/01-esm-redacted.RData", wd))
+```
 
+```{r, ESM data de-ided}
+load(sprintf("%s/01-data/02-clean-data/01-esm-redacted.RData", wd))
 old.names <- esm_codebook$old_name
 new.names <- esm_codebook$new_name
 
@@ -220,7 +235,7 @@ trait_rs %>%
 
 # Networks  
 ## dynEGA  
-```{r dynEGA}
+```{r dynEGA, results = F, message=FALSE, warning=F}
 ega_fun <- function(d, wave, sid){
   d <- data.frame(d)
   # get numeric ID of the participant ID column
@@ -381,7 +396,7 @@ d_nested <- trait_comp %>%
 ```
 
 ## Sample Model  
-```{r}
+```{r, eval = F}
 d <- d_nested$data[[1]]
 m0 <- brm(
     t_value ~ 1 + wave_c + idio_value + wave_c:idio_value + (1 + wave_c | SID)
@@ -400,7 +415,7 @@ save(m0, file = sprintf("%s/05-results/trait-sample-model.RData", wd))
 ```
 
 ## Run the Models  
-```{r}
+```{r, eval = F}
 lin_model_fun <- function(d, trait, metric, wave){
   m <- update(m0
               , newdata = d
@@ -804,7 +819,7 @@ d_nested <- trait_rs %>%
 ```
 
 ## Sample Model  
-```{r}
+```{r, eval = F}
 d <- d_nested$data[[1]]
 f <- bf(r ~ 1 - (1 - intercept)*exp(-asymptote*wave_c),
                nonlinear = intercept ~ 1 + idio_value + (1 | i | SID), 
@@ -835,7 +850,7 @@ save(m0, file = sprintf("%s/05-results/trait-sample-model.RData", wd))
 ```
 
 ## Run the Models  
-```{r}
+```{r, eval = F}
 nonlin_model_fun <- function(d, metric, wave){
   m <- update(m0
               , newdata = d
@@ -909,10 +924,10 @@ nested_fx_r <- tibble(file = sprintf("%s/05-results/03-r-models/02-summary", wd)
   separate(file, c("idio_metric", "idio_wave"), sep = "-") %>%
   mutate(idio_wave = str_remove_all(idio_wave, ".RData")) %>%
   unnest(fx) %>%
-  filter(effect == "fixed") 
-  mutate(sig = ifelse(sign(conf.low) == sign(conf.high), "sig", "ns"))
-  group_by(idio_metric, idio_wave) %>%
-  nest() %>%
+  # filter(effect == "fixed") 
+  # mutate(sig = ifelse(sign(conf.low) == sign(conf.high), "sig", "ns")) %>%
+  # group_by(idio_metric, idio_wave) %>%
+  # nest() %>%
   ungroup()
   
 tab <- nested_fx_r %>%
